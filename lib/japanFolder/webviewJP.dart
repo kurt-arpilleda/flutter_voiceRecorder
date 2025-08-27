@@ -1169,6 +1169,24 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                   onReceivedServerTrustAuthRequest: (controller, challenge) async {
                     return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
                   },
+                  onPermissionRequest: (controller, request) async {
+                    List<Permission> permissionsToRequest = [];
+
+                    if (request.resources.contains(PermissionResourceType.CAMERA)) {
+                      permissionsToRequest.add(Permission.camera);
+                    }
+                    if (request.resources.contains(PermissionResourceType.MICROPHONE)) {
+                      permissionsToRequest.add(Permission.microphone);
+                    }
+
+                    Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
+                    bool allGranted = statuses.values.every((status) => status.isGranted);
+
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: allGranted ? PermissionResponseAction.GRANT : PermissionResponseAction.DENY,
+                    );
+                  },
                   shouldOverrideUrlLoading: (controller, navigationAction) async {
                     final url = navigationAction.request.url?.toString() ?? '';
                     final isPdf = _isPdfUrl(url);
