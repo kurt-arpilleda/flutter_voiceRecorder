@@ -48,6 +48,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
   bool _isCountryDialogShowing = false;
   bool _isCountryLoadingPh = false;
   bool _isCountryLoadingJp = false;
+  bool _isDownloadDialogShowing = false;
 
   @override
   void initState() {
@@ -344,6 +345,198 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       return true;
     }
   }
+  bool _isPdfUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+
+    if (url.toLowerCase().endsWith('.pdf')) {
+      return true;
+    }
+
+    final mimeType = lookupMimeType(url);
+    if (mimeType == 'application/pdf') {
+      return true;
+    }
+
+    if (uri.pathSegments.last.toLowerCase().contains('pdf')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _launchInBrowser(String url) async {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } else {
+      Fluttertoast.showToast(
+        msg: _currentLanguageFlag == 2
+            ? "ブラウザを起動できませんでした"
+            : "Could not launch browser",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _viewPdfInternally(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      String fileName = uri.pathSegments.last;
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        fileName = 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PDFViewerScreen(
+            pdfUrl: url,
+            fileName: fileName,
+            languageFlag: _currentLanguageFlag ?? 1,
+          ),
+        ),
+      );
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: _currentLanguageFlag == 2
+            ? "PDFを開く際にエラーが発生しました"
+            : "Error opening PDF",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+      await _launchInBrowser(url);
+    }
+  }
+
+  void _showDownloadDialog(String url, bool isPdf) {
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+    if (_isDownloadDialogShowing) return;
+
+    _isDownloadDialogShowing = true;
+
+    final uri = Uri.parse(url);
+    String fileName = uri.pathSegments.last;
+
+    if (fileName.isEmpty || fileName.length > 50) {
+      fileName = isPdf
+          ? 'document_${DateTime.now().millisecondsSinceEpoch}.pdf'
+          : 'file_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(20),
+        height: MediaQuery.of(context).size.height * 0.35,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            SizedBox(height: 20),
+            Text(
+              _currentLanguageFlag == 2 ? 'ダウンロード' : 'Download',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 15),
+            Text(
+              _currentLanguageFlag == 2 ? 'ファイル名:' : 'File name:',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 8),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                fileName,
+                style: TextStyle(fontSize: 16),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Spacer(),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      _currentLanguageFlag == 2 ? 'キャンセル' : 'Cancel',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      if (isPdf) {
+                        await _viewPdfInternally(url);
+                      } else {
+                        await _launchInBrowser(url);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      isPdf
+                          ? (_currentLanguageFlag == 2 ? '表示' : 'View')
+                          : (_currentLanguageFlag == 2 ? 'ダウンロード' : 'Download'),
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      // Reset the flag when dialog is dismissed
+      _isDownloadDialogShowing = false;
+    });
+  }
 
   // Function to check if a URL is a download link
   bool _isDownloadableUrl(String url) {
@@ -364,25 +557,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     return downloadableExtensions.any((ext) => url.toLowerCase().contains('.$ext'));
   }
 
-  // Function to launch URL in external browser
-  Future<void> _launchInBrowser(String url) async {
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
-      Fluttertoast.showToast(
-        msg: _currentLanguageFlag == 2
-            ? "ブラウザを起動できませんでした"
-            : "Could not launch browser",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-    }
-  }
   Future<void> _showInputMethodPicker() async {
     try {
       if (Platform.isAndroid) {
@@ -423,110 +597,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
         }
       }
     });
-  }
-
-  Future<void> _setupInputFieldDetection() async {
-    if (webViewController != null) {
-      String jsCode = '''
-(function() {
-  let button;
-  let container;
-
-  function isVisible(elem) {
-    if (!elem || elem.offsetParent === null) return false;
-    
-    const rect = elem.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    
-    const topElem = document.elementFromPoint(centerX, centerY);
-    return topElem === elem || elem.contains(topElem);
-  }
-
-  function updateBarcodeScannerButton() {
-    const input = document.getElementById('search');
-    if (!input) return;
-
-    const shouldShow = isVisible(input);
-
-    // If it should be visible and not already added
-    if (shouldShow && !input.dataset.hasBarcodeButton) {
-      input.dataset.hasBarcodeButton = 'true';
-
-      container = document.createElement('div');
-      container.style.position = 'relative';
-      container.style.display = 'inline-block';
-      container.style.width = '100%';
-
-      input.parentNode.insertBefore(container, input);
-      container.appendChild(input);
-
-      button = document.createElement('div');
-      button.innerHTML = '𝄃𝄂𝄂𝄀𝄁𝄃';
-      button.style.cssText = \`
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 9999;
-        background: #3452B4;
-        color: white;
-        padding: 0 4px;
-        border-radius: 4px;
-        font-size: 10px;
-        cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        font-family: Arial, sans-serif;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      \`;
-
-      button.onclick = function(e) {
-        e.stopPropagation();
-        window.flutter_inappwebview.callHandler('openBarcodeScanner');
-      };
-
-      container.appendChild(button);
-    }
-
-    // If the input is now hidden or behind modal, remove the button
-    if (!shouldShow && button && container && container.parentNode) {
-      input.removeAttribute('data-has-barcode-button');
-      container.parentNode.insertBefore(input, container);
-      container.remove();
-      button = null;
-      container = null;
-    }
-  }
-
-  // Initial check
-  updateBarcodeScannerButton();
-
-  // Observe DOM for changes (e.g., modal open/close)
-  const observer = new MutationObserver(function() {
-    updateBarcodeScannerButton();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['style', 'class']
-  });
-
-  // Also check every second in case changes aren't caught by observer
-  setInterval(updateBarcodeScannerButton, 1000);
-})();
-''';
-
-      try {
-        await webViewController!.evaluateJavascript(source: jsCode);
-      } catch (e) {
-        print('Error setting up input field detection: \$e');
-      }
-    }
   }
   @override
   Widget build(BuildContext context) {
@@ -758,9 +828,11 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                               ],
                             ),
                           ),
-                          SizedBox(height: 20),
+                          SizedBox(height: 15),
                           Padding(
-                            padding: const EdgeInsets.only(left: 16.0),
+                            padding: EdgeInsets.only(
+                              left: _currentLanguageFlag == 2 ? 15.0 : 30.0,
+                            ),
                             child: Row(
                               children: [
                                 Text(
@@ -783,76 +855,140 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                               ],
                             ),
                           ),
-                          // SizedBox(height: 20),
-                          // Padding(
-                          //   padding: EdgeInsets.only(
-                          //     left: _currentLanguageFlag == 2 ? 58.0 : 32.0,
-                          //   ),
-                          //   child: Row(
-                          //     children: [
-                          //       Text(
-                          //         _currentLanguageFlag == 2
-                          //             ? 'メモ'
-                          //             : 'Memo',
-                          //         style: TextStyle(
-                          //           fontSize: 16,
-                          //           fontWeight: FontWeight.bold,
-                          //         ),
-                          //       ),
-                          //       SizedBox(width: 15),
-                          //       IconButton(
-                          //         icon: Container(
-                          //           width: 40,
-                          //           height: 40,
-                          //           decoration: BoxDecoration(
-                          //             color: Color(0xFFE91E63),
-                          //             shape: BoxShape.circle,
-                          //             border: Border.all(
-                          //               color: Colors.white,
-                          //               width: 2,
-                          //             ),
-                          //             boxShadow: [
-                          //               BoxShadow(
-                          //                 color: Colors.black.withOpacity(0.3),
-                          //                 blurRadius: 4,
-                          //                 offset: Offset(2, 2),
-                          //               ),
-                          //             ],
-                          //           ),
-                          //           child: Transform(
-                          //             alignment: Alignment.center,
-                          //             transform: Matrix4.identity()..scale(-1.0, 1.0),
-                          //             child: Icon(
-                          //               Icons.mode_comment_outlined,
-                          //               color: Colors.white,
-                          //               size: 20,
-                          //             ),
-                          //           ),
-                          //         ),
-                          //         onPressed: () async {
-                          //           // Close the drawer first
-                          //           Navigator.of(context).pop();
-                          //
-                          //           if (webViewController != null) {
-                          //             try {
-                          //               await webViewController!.evaluateJavascript(
-                          //                 source: "document.getElementById('memoBtn').click();",
-                          //               );
-                          //             } catch (e) {
-                          //               Fluttertoast.showToast(
-                          //                 msg: _currentLanguageFlag == 2
-                          //                     ? "メモボタンをクリックできませんでした"
-                          //                     : "Could not click memo button",
-                          //                 toastLength: Toast.LENGTH_SHORT,
-                          //                 gravity: ToastGravity.BOTTOM,
-                          //               );
-                          //             }
-                          //           }
-                          //         },
-                          //       ),
-                          //     ],
-                          //   ),
-                          // ),
+                          SizedBox(height: 15),
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: _currentLanguageFlag == 2 ? 58.0 : 46.0,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  _currentLanguageFlag == 2
+                                      ? 'メモ'
+                                      : 'Memo',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 15),
+                                IconButton(
+                                  icon: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: Color(0xFFE91E63),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: Offset(2, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Transform(
+                                      alignment: Alignment.center,
+                                      transform: Matrix4.identity()..scale(-1.0, 1.0),
+                                      child: Icon(
+                                        Icons.mode_comment_outlined,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    // Close the drawer first
+                                    Navigator.of(context).pop();
+
+                                    if (webViewController != null) {
+                                      try {
+                                        await webViewController!.evaluateJavascript(
+                                          source: "document.getElementById('memoBtn').click();",
+                                        );
+                                      } catch (e) {
+                                        Fluttertoast.showToast(
+                                          msg: _currentLanguageFlag == 2
+                                              ? "メモボタンをクリックできませんでした"
+                                              : "Could not click memo button",
+                                          toastLength: Toast.LENGTH_SHORT,
+                                          gravity: ToastGravity.BOTTOM,
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 15),
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: _currentLanguageFlag == 2 ? 25.0 : 9.0,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  _currentLanguageFlag == 2 ? 'バグ報告' : 'Bug Report',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 15),
+                                IconButton(
+                                  icon: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: Color(0xFFE8991A),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: Offset(2, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      Icons.bug_report_outlined,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    // Close the drawer first
+                                    Navigator.of(context).pop();
+
+                                    if (webViewController != null) {
+                                      try {
+                                        await webViewController!.evaluateJavascript(
+                                          source: "openBugReport('test', 'NG Report Software');",
+                                        );
+                                      } catch (e) {
+                                        Fluttertoast.showToast(
+                                          msg: _currentLanguageFlag == 2
+                                              ? "バグ報告を開けませんでした"
+                                              : "Could not open bug report",
+                                          toastLength: Toast.LENGTH_SHORT,
+                                          gravity: ToastGravity.BOTTOM,
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1023,43 +1159,25 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                       _isLoading = false;
                       _progress = 1;
                     });
-
-                    // Setup input field detection after page loads
                     await Future.delayed(Duration(milliseconds: 1000));
-                    await _setupInputFieldDetection();
                   },
                   onProgressChanged: (controller, progress) {
                     setState(() {
                       _progress = progress / 100;
                     });
                   },
-                  // ... rest of your existing InAppWebView configuration
                   onReceivedServerTrustAuthRequest: (controller, challenge) async {
                     return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
                   },
-                  onPermissionRequest: (controller, request) async {
-                    List<Permission> permissionsToRequest = [];
-
-                    if (request.resources.contains(PermissionResourceType.CAMERA)) {
-                      permissionsToRequest.add(Permission.camera);
-                    }
-                    if (request.resources.contains(PermissionResourceType.MICROPHONE)) {
-                      permissionsToRequest.add(Permission.microphone);
-                    }
-
-                    Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
-                    bool allGranted = statuses.values.every((status) => status.isGranted);
-
-                    return PermissionResponse(
-                      resources: request.resources,
-                      action: allGranted ? PermissionResponseAction.GRANT : PermissionResponseAction.DENY,
-                    );
-                  },
                   shouldOverrideUrlLoading: (controller, navigationAction) async {
                     final url = navigationAction.request.url?.toString() ?? '';
-
+                    final isPdf = _isPdfUrl(url);
                     if (_isDownloadableUrl(url)) {
                       await _launchInBrowser(url);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                    if (isPdf || lookupMimeType(url) != null) {
+                      _showDownloadDialog(url, isPdf);
                       return NavigationActionPolicy.CANCEL;
                     }
 
@@ -1067,7 +1185,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                     return NavigationActionPolicy.CANCEL;
                   },
                   onDownloadStartRequest: (controller, downloadStartRequest) async {
-                    await _launchInBrowser(downloadStartRequest.url.toString());
+                    final url = downloadStartRequest.url.toString();
+                    final isPdf = _isPdfUrl(url);
+                    _showDownloadDialog(url, isPdf);
                   },
                 ),
               if (_isLoading)
